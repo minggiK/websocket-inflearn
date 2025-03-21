@@ -1,4 +1,41 @@
 package hello.world.tutorial.websocketdomo.exceptionhandler;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.MessageHeaders;
+import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
+import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.bind.annotation.ControllerAdvice;
 
+import java.io.IOException;
+
+@ControllerAdvice
+@Slf4j
 public class StompExceptionHandler {
+
+    private final SimpMessagingTemplate messagingTemplate;
+
+    public StompExceptionHandler(SimpMessagingTemplate messagingTemplate) {
+        this.messagingTemplate = messagingTemplate;
+    }
+    //@ExceptionHandler
+    @MessageExceptionHandler
+    public void handleException(Exception exception) {
+        log.error("exception: {}", exception.getClass());
+
+    }
+
+    @MessageExceptionHandler
+    public void handleException(RuntimeException exception) {
+        log.error("exception: {}", exception.getClass());
+
+    }
+
+    @MessageExceptionHandler
+    @SendTo("/topic/hello") //-> user한테 예외처리 보냄
+    public String handleException(IOException exception, MessageHeaders headers) {
+        log.error("exception: {}", exception.getClass());
+        return "error!!";
+    }
+
+
 }

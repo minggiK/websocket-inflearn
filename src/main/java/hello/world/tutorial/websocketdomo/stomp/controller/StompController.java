@@ -19,6 +19,8 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
+import java.io.IOException;
+import java.security.InvalidParameterException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Random;
@@ -159,5 +161,25 @@ public class StompController {
         //알림 정지
         ScheduledFuture<?> remove = sessionMap.remove(sessionId);
         remove.cancel(true);
+    }
+
+    @MessageMapping("/exception")  // "/app/exception"
+    @SendTo("/topic/hello")
+    public void exception(RequestDto reqDto, MessageHeaders headers) throws Exception {
+        log.info("request: {}", reqDto);
+        String message = reqDto.getMessage();
+        switch (message) {
+            case "runtime":
+                throw new RuntimeException();
+            case "nullPointer" :
+                throw new NullPointerException();
+            case "io":
+                throw new IOException();
+            case "exception":
+                throw new Exception();
+            default:
+                throw new InvalidParameterException();
+        }
+
     }
 }
