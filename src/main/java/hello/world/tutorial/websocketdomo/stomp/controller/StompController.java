@@ -15,11 +15,16 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 
 @Controller
 @Slf4j
@@ -27,10 +32,13 @@ public class StompController {
 
     private final StompEventListener eventListener;
     private final SimpMessagingTemplate messagingTemplate;
+    private final TaskScheduler taskScheduler;
+    private final ConcurrentHashMap<String,  ScheduledFuture<?>> sessionMap = new ConcurrentHashMap<>();
 
-    public StompController(StompEventListener eventListener, SimpMessagingTemplate messagingTemplate) {
+    public StompController(StompEventListener eventListener, SimpMessagingTemplate messagingTemplate, TaskScheduler taskScheduler) {
         this.eventListener = eventListener;
         this.messagingTemplate = messagingTemplate;
+        this.taskScheduler = taskScheduler;
     }
 
     //    @GetMapping("/aaa")
@@ -109,5 +117,47 @@ public class StompController {
         headerAccessor.setSessionId(sessionId);
         headerAccessor.setLeaveMutable(true);
         return headerAccessor.getMessageHeaders();
+    }
+
+//특정 유저에게 실시간으로 변경되는 정보를 전달   @Scheduled -> 정적인 기능(start, stop을 따로설정할 수 없다.) : 프로그래밍 방식으로 사용
+    @MessageMapping("/start") // "/app/start"
+    public void start(RequestDto reqDto, MessageHeaders headers) {
+
+        log.info("headers: {}", headers);
+        //header에서 세션Id 가져오기
+        String sessionId = headers.get("simpSessionId").toString();
+        log.info("headers: {}", sessionId);
+
+        //프로그래밍 방식 : 원하는시점에 스케줄러를 시작할 수 있다. (동적으로 만들어줌)
+        ScheduledFuture<?> scheduledFuture = taskScheduler.scheduleAtFixedRate(() -> {  //주기 정보를 알려줘야해
+            Random random = new Random();
+            int currentPrice = random.nextInt(100);
+            messagingTemplate.convertAndSendToUser(sessionId, "/queue/trade", currentPrice, createHeaders(sessionId));
+        }, Duration.ofSeconds(3)); //3초에 한번식 정보(앞의내용)를 알려주도록 설정
+
+        //sessionId 에게 scheduledFuture 알려주고있다.
+        sessionMap.put(sessionId, scheduledFuture);
+//        //10초 뒤에 알림 취소
+//        Thread.sleep(10000);
+//        scheduledFuture.cancel(true);
+    }
+
+    @MessageMapping("/stop") // "/app/start"
+    public void stop(RequestDto reqDto, MessageHeaders headers) {
+
+        log.info("headers: {}", headers);
+        //header에서 세션Id 가져오기
+        String sessionId = headers.get("simpSessionId").toString();
+        log.info("sessionId: {}", sessionId);
+
+        //프로그래밍 방식 : 원하는시점에 스케줄러를 시작할 수 있다. (동적으로 만들어줌)
+
+
+//        //10초 뒤에 알림 취소 -> 형태가 다르다?
+//        Thread.sleep(10000);
+//        scheduledFuture.cancel(true);
+        //알림 정지
+        ScheduledFuture<?> remove = sessionMap.remove(sessionId);
+        remove.cancel(true);
     }
 }
