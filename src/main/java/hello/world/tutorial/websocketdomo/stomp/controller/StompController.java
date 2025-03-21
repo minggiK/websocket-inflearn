@@ -4,12 +4,16 @@ import hello.world.tutorial.websocketdomo.listener.StompEventListener;
 import hello.world.tutorial.websocketdomo.stomp.dto.RequestDto;
 import hello.world.tutorial.websocketdomo.stomp.dto.ResSessionDto;
 import hello.world.tutorial.websocketdomo.stomp.dto.ResponseDto;
+import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.SimpMessageType;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,9 +26,11 @@ import java.util.Set;
 public class StompController {
 
     private final StompEventListener eventListener;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    public StompController(StompEventListener eventListener) {
+    public StompController(StompEventListener eventListener, SimpMessagingTemplate messagingTemplate) {
         this.eventListener = eventListener;
+        this.messagingTemplate = messagingTemplate;
     }
 
     //    @GetMapping("/aaa")
@@ -51,8 +57,9 @@ public class StompController {
 
 
     @MessageMapping({"/sessions"}) //수신 request  -> "/app/sessions"  -> 요청을 보낸 세션Id(user) 를 알아야해
-    @SendToUser("/queue/sessions") //"user/queue/sessions" response  -> return 받음 // 특정 유저한테만 정보를 전달할 때, 사용 (queue : 세션기반 1데1통신 할때 사용하는 예약어 비슷?)
+    //"user/queue/sessions" response  -> return 받음 // 특정 유저한테만 정보를 전달할 때, 사용 (queue : 세션기반 1데1통신 할때 사용하는 예약어 비슷?)
     //구독이 같이도 실제로 요청을 보낸 유저한테만 응답을 함
+    @SendToUser("/queue/sessions")
     public ResSessionDto sessions(RequestDto reqDto, MessageHeaders headers) { //PathVariable
         //log 찍기
         log.info("reqDto: {}", reqDto);
@@ -62,5 +69,45 @@ public class StompController {
         //연결된 회원들의 정보를 가져옴
         Set<String> sessions = eventListener.getSessions();
         return new ResSessionDto(sessions.size(), sessions.stream().toList(), sessionId, LocalDateTime.now()); //응답함
+    }
+
+
+    //simpMessaging
+    @MessageMapping({"/code1"}) //수신 request  -> "/app/code1"  -> ResponseDto 로직 실행
+//    @SendTo({"/topic/hello", "/topic/hello2"}) // response  -> return 받음
+    public void code1(RequestDto reqDto, Message<RequestDto> message, MessageHeaders headers) { //PathVariable
+        //log 찍기
+        log.info("reqDto: {}", reqDto);
+        log.info("message: {}", message);
+        log.info("message: {}", headers);
+
+        ResponseDto resDto = new ResponseDto(reqDto.getMessage(), LocalDateTime.now());
+        //@SendTo 대신 코드 추가
+        messagingTemplate.convertAndSend("/topic/hello", resDto );
+
+    }
+
+    @MessageMapping({"/code2"}) // "/app/code2"
+//    @SendToUser("/queue/sessions")
+    public void code2(RequestDto reqDto, MessageHeaders headers) { //PathVariable
+        //log 찍기
+        log.info("reqDto: {}", reqDto);
+        //요청보낸 사용자의 세션Id
+        String sessionId = headers.get("sessionId").toString();
+        log.info("sessionId: {}", sessionId);
+
+        //연결된 회원들의 정보를 가져옴
+        Set<String> sessions = eventListener.getSessions();
+        ResSessionDto resSessionDto = new ResSessionDto(sessions.size(), sessions.stream().toList(), sessionId,LocalDateTime.now());
+        messagingTemplate.convertAndSendToUser(sessionId, "/queue/sessions", resSessionDto, createHeaders(sessionId)); //마지막 인자 header를 넣어야 수신이 가능
+
+    }
+
+    MessageHeaders createHeaders(@Nullable String sessionId) {
+        //인자로 받은 sessionId를 받아서 header로 만들어줌
+        SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
+        headerAccessor.setSessionId(sessionId);
+        headerAccessor.setLeaveMutable(true);
+        return headerAccessor.getMessageHeaders();
     }
 }

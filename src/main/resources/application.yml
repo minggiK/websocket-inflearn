@@ -1,0 +1,7 @@
+#spring.application.name=websocketdomo
+
+logging:
+  level:
+    org:
+      springframework:
+        messaging: trace
